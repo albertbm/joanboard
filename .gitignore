@@ -1,0 +1,6 @@
+# Local config holding the real token and personal values
+config.js
+
+# Backups and OS cruft
+*.bak
+.DS_Store

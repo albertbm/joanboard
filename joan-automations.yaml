@@ -1,0 +1,77 @@
+# Optional Home Assistant automations for joanboard. Append to automations.yaml.
+#
+# Sleep/wake is handled NATIVELY by the Visionect Software Suite ("Working hours"
+# in the device's Status & Settings), which sleeps and wakes the device on its
+# own. These automations only switch the displayed view around that window, plus
+# a low-battery reminder. They never call sleep_device/wake_device, so they
+# cannot leave the device stuck.
+#
+# Bracket your VSS Working hours: switch to the Night view a few minutes BEFORE
+# sleep (e-ink holds that last frame while asleep), and back to the Day view a
+# few minutes AFTER wake. Example below assumes Working hours 06:30-23:30.
+# Replace notify.mobile_app_your_phone with your own notify service.
+
+- id: joan_night_view
+  alias: Joan Night View
+  mode: single
+  triggers:
+  - trigger: time
+    at: "23:25:00"
+  actions:
+  - action: select.select_option
+    target:
+      entity_id: select.kitchen_joan_change_view_to
+    data:
+      option: Night
+
+- id: joan_day_view
+  alias: Joan Day View
+  mode: single
+  triggers:
+  - trigger: time
+    at: "06:35:00"
+  actions:
+  - action: select.select_option
+    target:
+      entity_id: select.kitchen_joan_change_view_to
+    data:
+      option: Day
+
+# Low battery reminder: < 20% for 10 min and not charging.
+- id: joan_battery_low
+  alias: Joan Battery Low
+  mode: single
+  triggers:
+  - trigger: numeric_state
+    entity_id: sensor.kitchen_joan_battery
+    below: 20
+    for: "00:10:00"
+  conditions:
+  - condition: state
+    entity_id: binary_sensor.kitchen_joan_charging_in_progress
+    state: "off"
+  actions:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: Joan battery low
+      message: "Kitchen display at {{ states('sensor.kitchen_joan_battery') }}% - time to charge."
+  - action: persistent_notification.create
+    data:
+      notification_id: joan_battery_low
+      title: Joan battery low
+      message: "Kitchen display at {{ states('sensor.kitchen_joan_battery') }}% - time to charge."
+
+- id: joan_battery_charged
+  alias: Joan Battery Charged (clear reminder)
+  mode: single
+  triggers:
+  - trigger: state
+    entity_id: binary_sensor.kitchen_joan_charging_in_progress
+    to: "on"
+  - trigger: numeric_state
+    entity_id: sensor.kitchen_joan_battery
+    above: 40
+  actions:
+  - action: persistent_notification.dismiss
+    data:
+      notification_id: joan_battery_low

@@ -1,0 +1,29 @@
+name: Joan Dashboard Server
+version: "1.0.1"
+slug: joan_dashboard
+description: LAN-only static web server + token-injecting API proxy for the Joan e-ink dashboard
+url: https://github.com/albertbm/joanboard/tree/main/addon-joan-httpserver
+arch:
+  - amd64
+startup: services
+boot: auto
+init: false
+ports:
+  "8099/tcp": 8099
+ports_description:
+  "8099/tcp": Dashboard web server (LAN only)
+map:
+  - share:ro
+options:
+  ha_token: ""
+  # Who may reach the server + API proxy. The only real client is the Visionect
+  # renderer. Set this to where the renderer comes from:
+  #   - VSS in the Home Assistant add-on stack: the Docker/Supervisor network,
+  #     e.g. "172.30.32.0/23".
+  #   - VSS self-hosted elsewhere: the Visionect server's IP, e.g. "10.0.0.5/32".
+  # "0.0.0.0/0" (allow all) is for first-run debugging only - it is a security
+  # risk, tighten it once it works. Space- or comma-separated for multiple. See DOCS.md.
+  allow_cidr: "0.0.0.0/0"
+schema:
+  ha_token: password
+  allow_cidr: str

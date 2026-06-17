@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1024, height=758, initial-scale=1">
+<title>Joan Dashboard</title>
+<style>
+  /* E-ink: pure black on white, no gradients/opacity */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1024px; height: 758px; overflow: hidden;
+    background: #fff; color: #000;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+  }
+  body { display: flex; flex-direction: column; padding: 18px; gap: 14px; }
+
+  /* Two columns: left (clock+weather); right stacks radio, calendar, dinner. */
+  .main   { flex: 1; display: flex; gap: 18px; min-height: 0; }
+  .left   { flex: 58 1 0; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .right  { flex: 42 1 0; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+  /* Clock - fixed height; matches the radio card so the dividers line up */
+  .clock {
+    flex: 0 0 250px;
+    border: 3px solid #000; border-radius: 16px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .clock .time { font-size: 130px; font-weight: 800; line-height: 0.9; letter-spacing: -3px; }
+  .clock .date { font-size: 28px; font-weight: 600; margin-top: 8px; }
+  .clock .inside { font-size: 22px; font-weight: 600; margin-top: 6px; }
+
+  /* Combined calendar + dinner box (right column, below radio) */
+  .combined { flex: 1; min-width: 0; border: 3px solid #000; border-radius: 16px;
+              padding: 16px 18px; display: flex; flex-direction: column; overflow: hidden; }
+  .seclabel { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
+              border-bottom: 2px solid #000; padding-bottom: 8px; }
+  .seclabel.mt { margin-top: 14px; }
+  .fam-list { flex: 1; overflow: hidden; margin-top: 4px; }
+  .din-list { flex: 0 0 auto; margin-top: 6px; }
+  .din-list .row { display: flex; gap: 14px; align-items: baseline; margin-top: 8px; }
+  .din-list .row .day { font-size: 16px; font-weight: 800; min-width: 86px; text-transform: uppercase; }
+  .din-list .row .meal { font-size: 21px; font-weight: 600;
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .din-list .row.tonight .meal { font-weight: 800; }
+
+  /* Calendar event rows */
+  .cal-ev { padding: 8px 0; border-bottom: 2px dotted #000; }
+  .cal-ev:last-child { border-bottom: none; }
+  .cal-when { font-size: 15px; font-weight: 800; text-transform: uppercase;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-what { font-size: 21px; font-weight: 700; line-height: 1.1;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Weather */
+  .weather { flex: 1; border: 3px solid #000; border-radius: 16px; padding: 20px;
+             display: flex; flex-direction: column; }
+  .wx-now { display: flex; align-items: center; gap: 18px; }
+  .wx-now .icon { width: 112px; height: 112px; flex: 0 0 112px; }
+  .wx-temp { font-size: 76px; font-weight: 800; line-height: 1; }
+  .wx-cond { font-size: 26px; font-weight: 700; text-transform: capitalize; }
+  .wx-meta { margin-left: auto; text-align: right; font-size: 20px; font-weight: 600; line-height: 1.4; }
+  .wx-fc { display: flex; gap: 12px; margin-top: auto; }
+  .wx-fc .day { flex: 1; border: 2px solid #000; border-radius: 12px; padding: 10px 4px; text-align: center; }
+  .wx-fc .day .d { font-size: 17px; font-weight: 800; text-transform: uppercase; }
+  .wx-fc .day .icon { width: 46px; height: 46px; margin: 6px auto; }
+  .wx-fc .day .hi { font-size: 22px; font-weight: 800; }
+  .wx-fc .day .lo { font-size: 18px; font-weight: 600; }
+
+  /* Status bar: full-width strip across the top */
+  .statusbar { display: flex; align-items: center; justify-content: space-between;
+               height: 26px; padding: 0 6px; flex: 0 0 auto; }
+  .statusbar .wifi, .statusbar .bat { display: flex; align-items: center; gap: 8px; }
+  .statusbar .wifi svg { width: 30px; height: 24px; }
+  .statusbar .bat svg  { width: 48px; height: 24px; }
+  .statusbar .txt { font-size: 18px; font-weight: 800; }
+  .statusbar .bar-msg { font-size: 20px; font-weight: 800; }
+
+  /* Radio card - fixed height matching the clock so the columns align */
+  .sonos { flex: 0 0 250px; border: 3px solid #000; border-radius: 16px;
+           padding: 16px 18px; display: flex; flex-direction: column; }
+  .sonos .label { font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
+                  border-bottom: 2px solid #000; padding-bottom: 6px; }
+  .sonos .track { font-size: 24px; font-weight: 800; margin-top: 12px; line-height: 1.15;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sonos .artist { font-size: 18px; font-weight: 500; margin-top: 4px;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .controls { display: flex; align-items: center; justify-content: space-around; margin-top: 14px; }
+  .controls button { background: #fff; border: none; padding: 4px; cursor: pointer; }
+  .controls svg { width: 44px; height: 44px; display: block; }
+  .controls .play svg { width: 58px; height: 58px; }
+
+  .volume { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+  .volume button { background: #fff; border: 3px solid #000; border-radius: 10px;
+                   width: 44px; height: 44px; cursor: pointer; }
+  .volume button svg { width: 24px; height: 24px; }
+  .volbar { flex: 1; height: 16px; border: 3px solid #000; border-radius: 8px; overflow: hidden; }
+  .volbar .fill { height: 100%; background: #000; width: 0%; }
+  .volume .vpct { font-size: 20px; font-weight: 800; width: 56px; text-align: right; }
+
+  .muted { font-style: italic; color: #000; }
+</style>
+</head>
+<body>
+  <!-- Full-width status bar: WiFi (left) + message (center) + battery (right) -->
+  <div class="statusbar">
+    <div class="wifi">
+      <svg id="wifiSvg" viewBox="0 0 28 22"></svg>
+      <div class="txt" id="wifiTxt">-- dBm</div>
+    </div>
+    <div class="bar-msg" id="barMsg"></div>
+    <div class="bat">
+      <svg viewBox="0 0 100 50" id="batSvg">
+        <rect x="2" y="9" width="84" height="32" rx="4" fill="#fff" stroke="#000" stroke-width="4"/>
+        <rect x="89" y="19" width="9" height="12" fill="#000"/>
+        <rect id="batFill" x="8" y="15" width="0" height="20" fill="#000"/>
+      </svg>
+      <div class="txt" id="batPct">--%</div>
+    </div>
+  </div>
+
+  <div class="main">
+  <div class="left">
+    <!-- Clock -->
+    <div class="clock">
+      <div class="time" id="time">--:--</div>
+      <div class="date" id="date"></div>
+      <div class="inside" id="insideTemp"></div>
+    </div>
+
+    <!-- Weather -->
+    <div class="weather">
+      <div class="wx-now">
+        <div class="icon" id="wxIcon"></div>
+        <div>
+          <div class="wx-temp" id="wxTemp">--&deg;</div>
+          <div class="wx-cond" id="wxCond"></div>
+        </div>
+        <div class="wx-meta">
+          <div id="wxHiLo"></div>
+          <div id="wxExtra"></div>
+        </div>
+      </div>
+      <div class="wx-fc" id="forecast"></div>
+    </div>
+  </div>
+
+  <div class="right">
+    <!-- Radio -->
+    <div class="sonos">
+      <div class="label" id="lblRadio"></div>
+      <div class="track" id="track">&mdash;</div>
+      <div class="artist" id="artist"></div>
+      <div class="spacer"></div>
+
+      <div class="controls">
+        <button class="prev" id="btnPrev" aria-label="Previous">
+          <svg viewBox="0 0 64 64"><polygon points="20,12 20,52 24,52 24,12" fill="#000"/><polygon points="52,12 26,32 52,52" fill="#000"/></svg>
+        </button>
+        <button class="play" id="btnPlay" aria-label="Play/Pause">
+          <svg id="playIcon" viewBox="0 0 64 64"><polygon points="16,10 16,54 54,32" fill="#000"/></svg>
+        </button>
+        <button class="next" id="btnNext" aria-label="Next">
+          <svg viewBox="0 0 64 64"><polygon points="44,12 44,52 40,52 40,12" fill="#000"/><polygon points="12,12 38,32 12,52" fill="#000"/></svg>
+        </button>
+      </div>
+
+      <div class="volume">
+        <button id="btnVolDown" aria-label="Volume down">
+          <svg viewBox="0 0 64 64"><rect x="12" y="29" width="40" height="6" fill="#000"/></svg>
+        </button>
+        <div class="volbar"><div class="fill" id="volFill"></div></div>
+        <button id="btnVolUp" aria-label="Volume up">
+          <svg viewBox="0 0 64 64"><rect x="12" y="29" width="40" height="6" fill="#000"/><rect x="29" y="12" width="6" height="40" fill="#000"/></svg>
+        </button>
+        <div class="vpct" id="volPct">--%</div>
+      </div>
+    </div>
+
+    <!-- Family calendar + dinner -->
+    <div class="combined">
+      <div class="seclabel" id="lblCalendar"></div>
+      <div class="fam-list" id="familyList"></div>
+      <div class="seclabel mt" id="lblDinner"></div>
+      <div class="din-list" id="dinnerList"></div>
+    </div>
+  </div>
+  </div>
+
+<script src="config.js"></script>
+<script>
+const CONFIG = window.JOAN_CONFIG || {};
+let T = {};
+
+/* ================== Helpers ================== */
+// Send the token only if one is configured. In the default proxy setup the
+// add-on injects it server-side, so CONFIG.TOKEN is empty here.
+const H = () => {
+  const h = { "Content-Type": "application/json" };
+  if (CONFIG.TOKEN) h["Authorization"] = "Bearer " + CONFIG.TOKEN;
+  return h;
+};
+const $ = id => document.getElementById(id);
+const loc = () => (T.dateLocale || "en-GB");
+// Device telemetry injected by the Visionect renderer (battery, RSSI, etc.).
+// Only present when rendered on the device; null in a normal browser.
+const dev = () => (typeof okular !== "undefined") ? okular : null;
+const localYMD = d => d.getFullYear() + "-" +
+  String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+
+async function getState(entity) {
+  const r = await fetch(`${CONFIG.HA_URL}/api/states/${entity}`, { headers: H() });
+  if (!r.ok) throw new Error(`${entity}: ${r.status}`);
+  return r.json();
+}
+async function callService(domain, service, data) {
+  await fetch(`${CONFIG.HA_URL}/api/services/${domain}/${service}`, {
+    method: "POST", headers: H(), body: JSON.stringify(data)
+  });
+  setTimeout(loadSonos, 800);
+  setTimeout(loadSonos, 2500);
+}
+
+/* ================== WiFi ================== */
+function wifiSVG(bars) {
+  const on = "#000", off = "#c0c0c0";
+  const arc = (d, active) =>
+    `<path d="${d}" fill="none" stroke="${active ? on : off}" stroke-width="2.6" stroke-linecap="round"/>`;
+  return (
+    arc("M2.53 11.97 A14 14 0 0 1 25.47 11.97", bars >= 4) +
+    arc("M6.63 14.84 A9 9 0 0 1 21.37 14.84", bars >= 3) +
+    arc("M10.72 17.71 A4 4 0 0 1 17.28 17.71", bars >= 2) +
+    `<circle cx="14" cy="20" r="2.1" fill="${on}"/>`
+  );
+}
+function setWifi(rssi) {
+  if (rssi == null || isNaN(rssi)) { $("wifiTxt").textContent = "—"; $("wifiSvg").innerHTML = wifiSVG(0); return; }
+  // RSSI is conventionally negative; Visionect reports the magnitude, so show -|value|.
+  const m = Math.abs(Math.round(rssi));
+  $("wifiTxt").textContent = "-" + m + " dBm";
+  let bars = 1;
+  if (m <= 55) bars = 4; else if (m <= 65) bars = 3; else if (m <= 75) bars = 2;
+  $("wifiSvg").innerHTML = wifiSVG(bars);
+}
+function loadWifi() {
+  // WiFi signal, from the device's own telemetry.
+  const d = dev();
+  const rssi = (d && d.RSSI != null && d.RSSI !== "") ? parseFloat(d.RSSI) : null;
+  setWifi(rssi);
+}
+
+/* ================== Weather icon ================== */
+function wxSVG(cond) {
+  const c = (cond || "").toLowerCase();
+  const sun = `<circle cx="32" cy="32" r="13" fill="#000"/>` +
+    [0,45,90,135,180,225,270,315].map(a=>{
+      const r=a*Math.PI/180, x1=32+Math.cos(r)*19, y1=32+Math.sin(r)*19, x2=32+Math.cos(r)*27, y2=32+Math.sin(r)*27;
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#000" stroke-width="4"/>`;
+    }).join("");
+  const moon = `<path d="M40 14 a20 20 0 1 0 12 38 a16 16 0 0 1 -12 -38 Z" fill="#000"/>`;
+  const cloud = `<path d="M18 46 a12 12 0 0 1 4-23 a16 16 0 0 1 30 5 a10 10 0 0 1 -2 19 Z" fill="#fff" stroke="#000" stroke-width="4"/>`;
+  const rain = `<line x1="24" y1="50" x2="20" y2="60" stroke="#000" stroke-width="4"/><line x1="34" y1="50" x2="30" y2="60" stroke="#000" stroke-width="4"/><line x1="44" y1="50" x2="40" y2="60" stroke="#000" stroke-width="4"/>`;
+  const snow = `<text x="20" y="62" font-size="18" font-weight="800">&#10052;</text>`;
+  const bolt = `<polygon points="34,46 26,60 32,60 28,68 40,52 33,52 38,46" fill="#000"/>`;
+  const fog  = `<line x1="14" y1="40" x2="50" y2="40" stroke="#000" stroke-width="4"/><line x1="14" y1="48" x2="50" y2="48" stroke="#000" stroke-width="4"/><line x1="18" y1="56" x2="46" y2="56" stroke="#000" stroke-width="4"/>`;
+  let body;
+  if (c.includes("clear-night")) body = moon;
+  else if (c.includes("sunny") || c.includes("clear")) body = sun;
+  else if (c.includes("lightning")) body = cloud + bolt;
+  else if (c.includes("pour") || c.includes("rain") || c.includes("shower")) body = cloud + rain;
+  else if (c.includes("snow") || c.includes("hail")) body = cloud + snow;
+  else if (c.includes("fog")) body = fog;
+  else if (c.includes("partly")) body = sun + cloud;
+  else body = cloud;
+  return `<svg viewBox="0 0 64 64" width="100%" height="100%">${body}</svg>`;
+}
+
+/* ================== Clock ================== */
+function tick() {
+  const d = new Date();
+  $("time").textContent = d.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit", hour12: false });
+  $("date").textContent = d.toLocaleDateString(loc(), { weekday: "long", day: "numeric", month: "long" });
+}
+
+/* ================== Battery ================== */
+function setBattery(v) {
+  const pct = Math.max(0, Math.min(100, Math.round(v)));
+  $("batPct").textContent = pct + "%";
+  $("batFill").setAttribute("width", (74 * pct / 100).toFixed(1));
+}
+function loadBattery() {
+  // Battery, from the device's own telemetry.
+  const d = dev();
+  if (d && d.BatteryLevel != null && d.BatteryLevel !== "") {
+    let v = parseFloat(d.BatteryLevel);
+    if (!isNaN(v)) { if (v > 0 && v <= 1) v *= 100; setBattery(v); return; }
+  }
+  $("batPct").textContent = "—"; $("batFill").setAttribute("width", 0);
+}
+
+/* ================== Inside temperature ================== */
+// From the device's own telemetry; shown under the clock date.
+function loadTemp() {
+  const el = $("insideTemp");
+  const d = dev();
+  if (d && d.Temperature != null && d.Temperature !== "") {
+    const v = parseFloat(d.Temperature);
+    if (!isNaN(v)) { el.textContent = (T.insideTemp || "Inside temp") + " " + Math.round(v) + "°"; return; }
+  }
+  el.textContent = "";
+}
+
+/* ================== Weather ================== */
+async function loadWeather() {
+  try {
+    const w = await getState(CONFIG.WEATHER_ENTITY);
+    const a = w.attributes || {};
+    $("wxIcon").innerHTML = wxSVG(w.state);
+    $("wxCond").textContent = (T.weather && T.weather[w.state]) || (w.state || "—").replace(/[-_]/g, " ");
+    if (a.temperature != null) $("wxTemp").textContent = Math.round(a.temperature) + "°";
+    const extra = [];
+    if (a.apparent_temperature != null) extra.push(T.feelsLike + " " + Math.round(a.apparent_temperature) + "°");
+    if (a.humidity != null) extra.push(T.humidity + " " + Math.round(a.humidity) + "%");
+    if (a.wind_speed != null) {
+      const u = a.wind_speed_unit || "km/h";
+      let ms = a.wind_speed;
+      if (u === "km/h") ms = a.wind_speed / 3.6;
+      else if (u === "mph") ms = a.wind_speed * 0.44704;
+      extra.push(T.wind + " " + Math.round(ms) + " " + T.windUnit);
+    }
+    $("wxExtra").innerHTML = extra.length ? extra.map(x => `<div>${x}</div>`).join("") : "—";
+
+    const r = await fetch(`${CONFIG.HA_URL}/api/services/weather/get_forecasts?return_response`, {
+      method: "POST", headers: H(),
+      body: JSON.stringify({ entity_id: CONFIG.WEATHER_ENTITY, type: "daily" })
+    });
+    let fc = [];
+    if (r.ok) {
+      const j = await r.json();
+      const sr = j.service_response || {};
+      fc = (sr[CONFIG.WEATHER_ENTITY] && sr[CONFIG.WEATHER_ENTITY].forecast) || [];
+    }
+    if (fc.length) {
+      const today = fc[0];
+      if (today.temperature != null && today.templow != null)
+        $("wxHiLo").textContent = `↑${Math.round(today.temperature)}°  ↓${Math.round(today.templow)}°`;
+      const html = fc.slice(1, 1 + (CONFIG.FORECAST_DAYS || 4)).map(f => {
+        const dd = new Date(f.datetime);
+        const hi = f.temperature != null ? Math.round(f.temperature) + "°" : "--°";
+        const lo = f.templow != null ? Math.round(f.templow) + "°" : "--°";
+        return `<div class="day"><div class="d">${dd.toLocaleDateString(loc(), {weekday:"short"})}</div>
+                <div class="icon">${wxSVG(f.condition)}</div>
+                <div class="hi">${hi}</div><div class="lo">${lo}</div></div>`;
+      }).join("");
+      $("forecast").innerHTML = html;
+    }
+  } catch (e) {
+    $("wxCond").textContent = T.weatherError || "weather error";
+    console.error(e);
+  }
+}
+
+/* ================== Dinner ================== */
+async function loadDinner() {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end = new Date(start.getTime() + 8 * 86400000);
+    const url = `${CONFIG.HA_URL}/api/calendars/${CONFIG.DINNER_CALENDAR}`
+              + `?start=${start.toISOString()}&end=${end.toISOString()}`;
+    const r = await fetch(url, { headers: H() });
+    if (!r.ok) throw new Error("calendar " + r.status);
+    let evs = (await r.json()).map(ev => {
+      const ds = ev.start.date || (ev.start.dateTime || "").slice(0, 10);
+      return { date: ds, summary: ev.summary || T.noTitle };
+    }).filter(e => e.date);
+    const todayStr = localYMD(now);
+    evs = evs.filter(e => e.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date));
+    evs = evs.slice(0, CONFIG.DINNER_DAYS || 3);
+    if (!evs.length) { $("dinnerList").innerHTML = `<div class="muted">${T.noMeals}</div>`; return; }
+    $("dinnerList").innerHTML = evs.map(e => {
+      const isToday = e.date === todayStr;
+      const d = new Date(e.date + "T00:00:00");
+      const day = isToday ? T.tonight : d.toLocaleDateString(loc(), { weekday: "short", day: "numeric" });
+      return `<div class="row ${isToday ? "tonight" : ""}">
+        <div class="day">${day}</div><div class="meal">${e.summary}</div></div>`;
+    }).join("");
+  } catch (e) {
+    $("dinnerList").innerHTML = `<div class="muted">${T.error}</div>`;
+    console.error(e);
+  }
+}
+
+/* ================== Family calendar (merges duplicate events) ================== */
+async function loadFamily() {
+  try {
+    const now = new Date();
+    const start = new Date(now.getTime() - 3600000);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (CONFIG.FAMILY_DAYS || 14));
+    const map = new Map();
+    for (const [ent, who] of (CONFIG.FAMILY || [])) {
+      try {
+        const r = await fetch(`${CONFIG.HA_URL}/api/calendars/${ent}`
+                + `?start=${start.toISOString()}&end=${end.toISOString()}`, { headers: H() });
+        if (!r.ok) continue;
+        for (const e of await r.json()) {
+          const allDay = !!(e.start && e.start.date);
+          const s = new Date(allDay ? e.start.date + "T00:00:00" : e.start.dateTime);
+          const summary = e.summary || T.noTitle;
+          const key = s.getTime() + "|" + allDay + "|" + summary.toLowerCase();
+          if (map.has(key)) {
+            const o = map.get(key);
+            if (!o.who.includes(who)) o.who.push(who);
+          } else {
+            map.set(key, { s, allDay, summary, who: [who] });
+          }
+        }
+      } catch (_) {}
+    }
+    let evs = [...map.values()].sort((a, b) => a.s - b.s).slice(0, CONFIG.FAMILY_MAX || 7);
+    if (!evs.length) { $("familyList").innerHTML = `<div class="muted">${T.noEvents}</div>`; return; }
+    const todayStr = localYMD(now);
+    $("familyList").innerHTML = evs.map(e => {
+      const day = (localYMD(e.s) === todayStr) ? T.today
+                : e.s.toLocaleDateString(loc(), { weekday: "short", day: "numeric", month: "short" });
+      const time = e.allDay ? T.allDay : e.s.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit", hour12: false });
+      return `<div class="cal-ev">
+        <div class="cal-when">${day} · ${time} · ${e.who.join(" + ")}</div>
+        <div class="cal-what">${e.summary}</div></div>`;
+    }).join("");
+  } catch (e) {
+    $("familyList").innerHTML = `<div class="muted">${T.error}</div>`;
+    console.error(e);
+  }
+}
+
+/* ================== Radio (Sonos) ================== */
+const ICON_PAUSE = '<rect x="16" y="12" width="12" height="40" fill="#000"/><rect x="36" y="12" width="12" height="40" fill="#000"/>';
+const ICON_PLAY  = '<polygon points="16,10 16,54 54,32" fill="#000"/>';
+
+async function loadSonos() {
+  try {
+    const s = await getState(CONFIG.SONOS_ENTITY);
+    const a = s.attributes || {};
+    $("track").textContent = a.media_title || (s.state === "idle" ? T.nothingPlaying : "—");
+    $("artist").textContent = a.media_artist || a.media_album_name || "";
+    const audible = (s.state === "playing") && !a.is_volume_muted && (a.volume_level || 0) > 0;
+    $("playIcon").innerHTML = audible ? ICON_PAUSE : ICON_PLAY;
+    const vol = (a.volume_level != null) ? Math.round(a.volume_level * 100) : 0;
+    $("volFill").style.width = vol + "%";
+    $("volPct").textContent = vol + "%";
+  } catch (e) {
+    $("track").innerHTML = `<span class="muted">${T.sonosUnavailable}</span>`;
+  }
+}
+
+/* ================== Controls ================== */
+const E = CONFIG.SONOS_ENTITY;
+$("btnPrev").onclick    = () => callService("script", CONFIG.SCRIPT_SKIP, { step: -1 });
+$("btnNext").onclick    = () => callService("script", CONFIG.SCRIPT_SKIP, { step: 1 });
+$("btnPlay").onclick     = () => callService("script", CONFIG.SCRIPT_PLAY, {});
+$("btnVolUp").onclick   = () => callService("media_player", "volume_up",   { entity_id: E });
+$("btnVolDown").onclick = () => callService("media_player", "volume_down", { entity_id: E });
+
+/* ================== Init ================== */
+function refreshData() { loadBattery(); loadWifi(); loadTemp(); loadWeather(); loadDinner(); loadFamily(); loadSonos(); }
+
+async function init() {
+  if (!window.JOAN_CONFIG) { document.body.innerHTML = "<p style='padding:40px;font-size:28px'>Missing config.js</p>"; return; }
+  try { T = await (await fetch(`lang/${CONFIG.LANGUAGE || "en"}.json`)).json(); }
+  catch (e) { T = { dateLocale: "en-GB", labels: {}, weather: {} }; }
+
+  $("barMsg").textContent = CONFIG.BAR_MSG || "";
+  $("lblRadio").textContent = (T.labels && T.labels.radio) || "Radio";
+  $("lblCalendar").textContent = (T.labels && T.labels.calendar) || "Calendar";
+  $("lblDinner").textContent = (T.labels && T.labels.dinner) || "Dinner";
+  $("familyList").innerHTML = `<div class="muted">${T.loading || "Loading"}…</div>`;
+  $("dinnerList").innerHTML = `<div class="muted">${T.loading || "Loading"}…</div>`;
+
+  tick(); setInterval(tick, 10000);
+  refreshData(); setInterval(refreshData, (CONFIG.REFRESH_SEC || 20) * 1000);
+}
+init();
+</script>
+</body>
+</html>

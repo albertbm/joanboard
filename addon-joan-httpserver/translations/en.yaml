@@ -1,0 +1,7 @@
+configuration:
+  ha_token:
+    name: Home Assistant token
+    description: Long-lived access token. The add-on injects it into API requests, so it is never served to the browser. Leave TOKEN empty in config.js.
+  allow_cidr:
+    name: Allowed networks
+    description: Networks allowed to reach the dashboard and API proxy (CIDR, space- or comma-separated). Use the Visionect renderer's network; 0.0.0.0/0 allows everything and is for debugging only.

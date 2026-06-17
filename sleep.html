@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1024, height=758, initial-scale=1">
+<title>Joan - Sleeping</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1024px; height: 758px; overflow: hidden;
+    background: #fff; color: #000;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .moon { width: 200px; height: 200px; }
+  .msg { font-size: 72px; font-weight: 800; margin-top: 24px; }
+  .sub { font-size: 28px; font-weight: 600; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <svg class="moon" viewBox="0 0 100 100">
+    <path d="M64 10 a44 44 0 1 0 30 74 a35 35 0 0 1 -30 -74 Z" fill="#000"/>
+    <circle cx="24" cy="30" r="2.5" fill="#000"/>
+    <circle cx="34" cy="20" r="1.8" fill="#000"/>
+    <circle cx="18" cy="46" r="1.8" fill="#000"/>
+  </svg>
+  <div class="msg" id="msg"></div>
+  <div class="sub" id="sub"></div>
+
+  <script src="config.js"></script>
+  <script>
+    (async () => {
+      const C = window.JOAN_CONFIG || {};
+      let T = {};
+      try { T = await (await fetch(`lang/${C.LANGUAGE || "en"}.json`)).json(); } catch (e) {}
+      document.getElementById("msg").textContent = T.goodNight || "Good night";
+      document.getElementById("sub").textContent = C.BAR_MSG || "";
+    })();
+  </script>
+</body>
+</html>
