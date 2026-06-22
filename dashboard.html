@@ -21,7 +21,7 @@
 
   /* Clock - fixed height; matches the radio card so the dividers line up */
   .clock {
-    flex: 0 0 250px;
+    flex: 0 0 250px; min-height: 0; overflow: hidden;
     border: 3px solid #000; border-radius: 16px;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
@@ -29,6 +29,10 @@
   .clock .time { font-size: 130px; font-weight: 800; line-height: 0.9; letter-spacing: -3px; }
   .clock .date { font-size: 28px; font-weight: 600; margin-top: 8px; }
   .clock .inside { font-size: 22px; font-weight: 600; margin-top: 6px; }
+  .clock .trash { font-size: 19px; font-weight: 600; margin-top: 10px;
+                  display: flex; align-items: center; gap: 7px; }
+  .clock .trash svg { width: 20px; height: 20px; flex: 0 0 20px; }
+  .clock .trash.soon { font-weight: 800; }
 
   /* Combined calendar + dinner box (right column, below radio) */
   .combined { flex: 1; min-width: 0; border: 3px solid #000; border-radius: 16px;
@@ -77,8 +81,15 @@
   .statusbar .bar-msg { font-size: 20px; font-weight: 800; }
 
   /* Radio card - fixed height matching the clock so the columns align */
-  .sonos { flex: 0 0 250px; border: 3px solid #000; border-radius: 16px;
+  .sonos { flex: 0 0 250px; min-height: 0; overflow: hidden; position: relative;
+           border: 3px solid #000; border-radius: 16px;
            padding: 16px 18px; display: flex; flex-direction: column; }
+  .sonos .power { position: absolute; top: 14px; right: 16px; width: 50px; height: 50px;
+                  background: #fff; border: 3px solid #000; border-radius: 50%;
+                  display: none; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+  .sonos .power svg { width: 26px; height: 26px; }
+  .sonos.off .controls, .sonos.off .volume { display: none; }
+  .sonos.off .power { display: flex; }
   .sonos .label { font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
                   border-bottom: 2px solid #000; padding-bottom: 6px; }
   .sonos .track { font-size: 24px; font-weight: 800; margin-top: 12px; line-height: 1.15;
@@ -86,12 +97,12 @@
   .sonos .artist { font-size: 18px; font-weight: 500; margin-top: 4px;
                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .controls { display: flex; align-items: center; justify-content: space-around; margin-top: 14px; }
+  .controls { display: flex; align-items: center; justify-content: space-around; margin-top: 10px; }
   .controls button { background: #fff; border: none; padding: 4px; cursor: pointer; }
   .controls svg { width: 44px; height: 44px; display: block; }
-  .controls .play svg { width: 58px; height: 58px; }
+  .controls .play svg { width: 50px; height: 50px; }
 
-  .volume { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+  .volume { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
   .volume button { background: #fff; border: 3px solid #000; border-radius: 10px;
                    width: 44px; height: 44px; cursor: pointer; }
   .volume button svg { width: 24px; height: 24px; }
@@ -127,6 +138,7 @@
       <div class="time" id="time">--:--</div>
       <div class="date" id="date"></div>
       <div class="inside" id="insideTemp"></div>
+      <div class="trash" id="trash"></div>
     </div>
 
     <!-- Weather -->
@@ -148,7 +160,10 @@
 
   <div class="right">
     <!-- Radio -->
-    <div class="sonos">
+    <div class="sonos" id="sonosCard">
+      <button class="power" id="btnPower" aria-label="Power">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="2.5" x2="12" y2="11.5" stroke="#000" stroke-width="2.4" stroke-linecap="round"/><path d="M7.5 6 A 7.2 7.2 0 1 0 16.5 6" fill="none" stroke="#000" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
       <div class="label" id="lblRadio"></div>
       <div class="track" id="track">&mdash;</div>
       <div class="artist" id="artist"></div>
@@ -209,6 +224,16 @@ const dev = () => (typeof okular !== "undefined") ? okular : null;
 const localYMD = d => d.getFullYear() + "-" +
   String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 
+// Change-guarded DOM setters: only touch the DOM when the value actually changes,
+// so the renderer (ChangesAutodetect threshold=0) never pushes a redundant frame.
+const sTxt   = (id, v) => { const e = $(id); if (e && e.textContent !== String(v)) e.textContent = v; };
+const sHtml  = (id, v) => { const e = $(id); if (e && e.innerHTML !== v) e.innerHTML = v; };
+const sAttr  = (id, a, v) => { const e = $(id); if (e && e.getAttribute(a) !== String(v)) e.setAttribute(a, v); };
+const sStyle = (id, p, v) => { const e = $(id); if (e && e.style[p] !== v) e.style[p] = v; };
+const sClass = (id, c, on) => { const e = $(id); if (e && e.classList.contains(c) !== !!on) e.classList.toggle(c, !!on); };
+// Escape external text (calendar titles, bin label) before it goes into innerHTML.
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
 async function getState(entity) {
   const r = await fetch(`${CONFIG.HA_URL}/api/states/${entity}`, { headers: H() });
   if (!r.ok) throw new Error(`${entity}: ${r.status}`);
@@ -235,13 +260,14 @@ function wifiSVG(bars) {
   );
 }
 function setWifi(rssi) {
-  if (rssi == null || isNaN(rssi)) { $("wifiTxt").textContent = "—"; $("wifiSvg").innerHTML = wifiSVG(0); return; }
+  if (rssi == null || isNaN(rssi)) { sTxt("wifiTxt", "—"); sHtml("wifiSvg", wifiSVG(0)); return; }
   // RSSI is conventionally negative; Visionect reports the magnitude, so show -|value|.
   const m = Math.abs(Math.round(rssi));
-  $("wifiTxt").textContent = "-" + m + " dBm";
   let bars = 1;
   if (m <= 55) bars = 4; else if (m <= 65) bars = 3; else if (m <= 75) bars = 2;
-  $("wifiSvg").innerHTML = wifiSVG(bars);
+  // Round to nearest 5 dBm so normal RSSI jitter (±a few dB) doesn't churn the display.
+  sTxt("wifiTxt", "-" + (Math.round(m / 5) * 5) + " dBm");
+  sHtml("wifiSvg", wifiSVG(bars));
 }
 function loadWifi() {
   // WiFi signal, from the device's own telemetry.
@@ -279,36 +305,76 @@ function wxSVG(cond) {
 /* ================== Clock ================== */
 function tick() {
   const d = new Date();
-  $("time").textContent = d.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit", hour12: false });
-  $("date").textContent = d.toLocaleDateString(loc(), { weekday: "long", day: "numeric", month: "long" });
+  sTxt("time", d.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit", hour12: false }));
+  sTxt("date", d.toLocaleDateString(loc(), { weekday: "long", day: "numeric", month: "long" }));
 }
 
 /* ================== Battery ================== */
-function setBattery(v) {
-  const pct = Math.max(0, Math.min(100, Math.round(v)));
-  $("batPct").textContent = pct + "%";
-  $("batFill").setAttribute("width", (74 * pct / 100).toFixed(1));
-}
+let _batShown = null, _batPending = null;
 function loadBattery() {
   // Battery, from the device's own telemetry.
   const d = dev();
+  let pct = null;
   if (d && d.BatteryLevel != null && d.BatteryLevel !== "") {
     let v = parseFloat(d.BatteryLevel);
-    if (!isNaN(v)) { if (v > 0 && v <= 1) v *= 100; setBattery(v); return; }
+    if (!isNaN(v)) { if (v > 0 && v <= 1) v *= 100; pct = Math.max(0, Math.min(100, Math.round(v))); }
   }
-  $("batPct").textContent = "—"; $("batFill").setAttribute("width", 0);
+  if (pct == null) { sTxt("batPct", "—"); sAttr("batFill", "width", 0); _batShown = _batPending = null; return; }
+  // This device's gauge flips wildly (e.g. 28<->100). Require a big jump to be confirmed by two
+  // consecutive reads before trusting it; small drifts pass through. Trade-off: after a telemetry
+  // gap it trusts the first reading, so it can briefly latch a wrong value until a sustained change.
+  if (_batShown != null && Math.abs(pct - _batShown) > 25 && pct !== _batPending) { _batPending = pct; return; }
+  _batPending = null; _batShown = pct;
+  sTxt("batPct", pct + "%");
+  sAttr("batFill", "width", (74 * pct / 100).toFixed(1));
 }
 
 /* ================== Inside temperature ================== */
 // From the device's own telemetry; shown under the clock date.
 function loadTemp() {
-  const el = $("insideTemp");
   const d = dev();
   if (d && d.Temperature != null && d.Temperature !== "") {
     const v = parseFloat(d.Temperature);
-    if (!isNaN(v)) { el.textContent = (T.insideTemp || "Inside temp") + " " + Math.round(v) + "°"; return; }
+    if (!isNaN(v)) { sTxt("insideTemp", (T.insideTemp || "Inside temp") + " " + Math.round(v) + "°"); return; }
   }
-  el.textContent = "";
+  sTxt("insideTemp", "");
+}
+
+/* ================== Bin collection ================== */
+// Reads a sensor whose state is the next collection date (YYYY-MM-DD). An
+// optional CONFIG.TRASH_LABEL_ATTR names an attribute holding the bin type.
+const TRASH_ICON = '<svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8Z" fill="none" stroke="#000" stroke-width="2"/>'
+  + '<path d="M4 8h16M9 8V5h6v3M10 11v6M14 11v6" fill="none" stroke="#000" stroke-width="2"/></svg>';
+// The schedule changes rarely, so fetch at most once a day. We still re-render
+// every refresh (cheap, no network) so the relative "today/tomorrow/date" stays
+// correct across midnight without waiting for the next daily fetch.
+const TRASH_REFRESH_MS = 24 * 3600 * 1000;
+let _trashState = null, _trashFetched = 0;
+async function loadTrash() {
+  if (!CONFIG.TRASH_ENTITY) { $("trash").innerHTML = ""; return; }
+  if (!_trashState || (Date.now() - _trashFetched) >= TRASH_REFRESH_MS) {
+    try { _trashState = await getState(CONFIG.TRASH_ENTITY); _trashFetched = Date.now(); }
+    catch (e) { /* keep last; retry next cycle until we have a value */ }
+  }
+  renderTrash();
+}
+function renderTrash() {
+  const s = _trashState;
+  if (!s) return;
+  const d = new Date((s.state || "") + "T00:00:00");
+  if (isNaN(d.getTime())) return;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((d - today) / 86400000);
+  let label = CONFIG.TRASH_LABEL_ATTR ? ((s.attributes || {})[CONFIG.TRASH_LABEL_ATTR] || "") : "";
+  // Optional CONFIG.TRASH_LABEL_MAP rewrites bin terms (e.g. sensor wording -> your own).
+  if (CONFIG.TRASH_LABEL_MAP) for (const k in CONFIG.TRASH_LABEL_MAP) label = label.split(k).join(CONFIG.TRASH_LABEL_MAP[k]);
+  let when;
+  if (days <= 0) when = T.today || "Today";
+  else if (days === 1) when = T.tomorrow || "Tomorrow";
+  else when = d.toLocaleDateString(loc(), { weekday: "short", day: "numeric", month: "short" });
+  sHtml("trash", TRASH_ICON + "<span>" + (label ? esc(label) + " · " : "") + esc(when) + "</span>");
+  sClass("trash", "soon", days <= 1);
 }
 
 /* ================== Weather ================== */
@@ -316,9 +382,9 @@ async function loadWeather() {
   try {
     const w = await getState(CONFIG.WEATHER_ENTITY);
     const a = w.attributes || {};
-    $("wxIcon").innerHTML = wxSVG(w.state);
-    $("wxCond").textContent = (T.weather && T.weather[w.state]) || (w.state || "—").replace(/[-_]/g, " ");
-    if (a.temperature != null) $("wxTemp").textContent = Math.round(a.temperature) + "°";
+    sHtml("wxIcon", wxSVG(w.state));
+    sTxt("wxCond", (T.weather && T.weather[w.state]) || (w.state || "—").replace(/[-_]/g, " "));
+    if (a.temperature != null) sTxt("wxTemp", Math.round(a.temperature) + "°");
     const extra = [];
     if (a.apparent_temperature != null) extra.push(T.feelsLike + " " + Math.round(a.apparent_temperature) + "°");
     if (a.humidity != null) extra.push(T.humidity + " " + Math.round(a.humidity) + "%");
@@ -329,7 +395,7 @@ async function loadWeather() {
       else if (u === "mph") ms = a.wind_speed * 0.44704;
       extra.push(T.wind + " " + Math.round(ms) + " " + T.windUnit);
     }
-    $("wxExtra").innerHTML = extra.length ? extra.map(x => `<div>${x}</div>`).join("") : "—";
+    sHtml("wxExtra", extra.length ? extra.map(x => `<div>${x}</div>`).join("") : "—");
 
     const r = await fetch(`${CONFIG.HA_URL}/api/services/weather/get_forecasts?return_response`, {
       method: "POST", headers: H(),
@@ -344,7 +410,7 @@ async function loadWeather() {
     if (fc.length) {
       const today = fc[0];
       if (today.temperature != null && today.templow != null)
-        $("wxHiLo").textContent = `↑${Math.round(today.temperature)}°  ↓${Math.round(today.templow)}°`;
+        sTxt("wxHiLo", `↑${Math.round(today.temperature)}°  ↓${Math.round(today.templow)}°`);
       const html = fc.slice(1, 1 + (CONFIG.FORECAST_DAYS || 4)).map(f => {
         const dd = new Date(f.datetime);
         const hi = f.temperature != null ? Math.round(f.temperature) + "°" : "--°";
@@ -353,10 +419,10 @@ async function loadWeather() {
                 <div class="icon">${wxSVG(f.condition)}</div>
                 <div class="hi">${hi}</div><div class="lo">${lo}</div></div>`;
       }).join("");
-      $("forecast").innerHTML = html;
+      sHtml("forecast", html);
     }
   } catch (e) {
-    $("wxCond").textContent = T.weatherError || "weather error";
+    sTxt("wxCond", T.weatherError || "weather error");
     console.error(e);
   }
 }
@@ -378,16 +444,16 @@ async function loadDinner() {
     const todayStr = localYMD(now);
     evs = evs.filter(e => e.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date));
     evs = evs.slice(0, CONFIG.DINNER_DAYS || 3);
-    if (!evs.length) { $("dinnerList").innerHTML = `<div class="muted">${T.noMeals}</div>`; return; }
-    $("dinnerList").innerHTML = evs.map(e => {
+    if (!evs.length) { sHtml("dinnerList", `<div class="muted">${T.noMeals}</div>`); return; }
+    sHtml("dinnerList", evs.map(e => {
       const isToday = e.date === todayStr;
       const d = new Date(e.date + "T00:00:00");
       const day = isToday ? T.tonight : d.toLocaleDateString(loc(), { weekday: "short", day: "numeric" });
       return `<div class="row ${isToday ? "tonight" : ""}">
-        <div class="day">${day}</div><div class="meal">${e.summary}</div></div>`;
-    }).join("");
+        <div class="day">${day}</div><div class="meal">${esc(e.summary)}</div></div>`;
+    }).join(""));
   } catch (e) {
-    $("dinnerList").innerHTML = `<div class="muted">${T.error}</div>`;
+    sHtml("dinnerList", `<div class="muted">${T.error}</div>`);
     console.error(e);
   }
 }
@@ -398,39 +464,44 @@ async function loadFamily() {
     const now = new Date();
     const start = new Date(now.getTime() - 3600000);
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (CONFIG.FAMILY_DAYS || 14));
-    const map = new Map();
-    for (const [ent, who] of (CONFIG.FAMILY || [])) {
+    // Fetch all calendars concurrently, then merge in config order (so the merged
+    // "who" list and dedup stay deterministic regardless of which response lands first).
+    const fam = CONFIG.FAMILY || [];
+    const lists = await Promise.all(fam.map(async ([ent]) => {
       try {
         const r = await fetch(`${CONFIG.HA_URL}/api/calendars/${ent}`
                 + `?start=${start.toISOString()}&end=${end.toISOString()}`, { headers: H() });
-        if (!r.ok) continue;
-        for (const e of await r.json()) {
-          const allDay = !!(e.start && e.start.date);
-          const s = new Date(allDay ? e.start.date + "T00:00:00" : e.start.dateTime);
-          const summary = e.summary || T.noTitle;
-          const key = s.getTime() + "|" + allDay + "|" + summary.toLowerCase();
-          if (map.has(key)) {
-            const o = map.get(key);
-            if (!o.who.includes(who)) o.who.push(who);
-          } else {
-            map.set(key, { s, allDay, summary, who: [who] });
-          }
+        return r.ok ? await r.json() : [];
+      } catch (_) { return []; }
+    }));
+    const map = new Map();
+    fam.forEach(([, who], i) => {
+      for (const e of lists[i]) {
+        const allDay = !!(e.start && e.start.date);
+        const s = new Date(allDay ? e.start.date + "T00:00:00" : e.start.dateTime);
+        const summary = e.summary || T.noTitle;
+        const key = s.getTime() + "|" + allDay + "|" + summary.toLowerCase();
+        if (map.has(key)) {
+          const o = map.get(key);
+          if (!o.who.includes(who)) o.who.push(who);
+        } else {
+          map.set(key, { s, allDay, summary, who: [who] });
         }
-      } catch (_) {}
-    }
+      }
+    });
     let evs = [...map.values()].sort((a, b) => a.s - b.s).slice(0, CONFIG.FAMILY_MAX || 7);
-    if (!evs.length) { $("familyList").innerHTML = `<div class="muted">${T.noEvents}</div>`; return; }
+    if (!evs.length) { sHtml("familyList", `<div class="muted">${T.noEvents}</div>`); return; }
     const todayStr = localYMD(now);
-    $("familyList").innerHTML = evs.map(e => {
+    sHtml("familyList", evs.map(e => {
       const day = (localYMD(e.s) === todayStr) ? T.today
                 : e.s.toLocaleDateString(loc(), { weekday: "short", day: "numeric", month: "short" });
       const time = e.allDay ? T.allDay : e.s.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit", hour12: false });
       return `<div class="cal-ev">
-        <div class="cal-when">${day} · ${time} · ${e.who.join(" + ")}</div>
-        <div class="cal-what">${e.summary}</div></div>`;
-    }).join("");
+        <div class="cal-when">${day} · ${time} · ${e.who.map(esc).join(" + ")}</div>
+        <div class="cal-what">${esc(e.summary)}</div></div>`;
+    }).join(""));
   } catch (e) {
-    $("familyList").innerHTML = `<div class="muted">${T.error}</div>`;
+    sHtml("familyList", `<div class="muted">${T.error}</div>`);
     console.error(e);
   }
 }
@@ -443,15 +514,37 @@ async function loadSonos() {
   try {
     const s = await getState(CONFIG.SONOS_ENTITY);
     const a = s.attributes || {};
-    $("track").textContent = a.media_title || (s.state === "idle" ? T.nothingPlaying : "—");
-    $("artist").textContent = a.media_artist || a.media_album_name || "";
-    const audible = (s.state === "playing") && !a.is_volume_muted && (a.volume_level || 0) > 0;
-    $("playIcon").innerHTML = audible ? ICON_PAUSE : ICON_PLAY;
-    const vol = (a.volume_level != null) ? Math.round(a.volume_level * 100) : 0;
-    $("volFill").style.width = vol + "%";
-    $("volPct").textContent = vol + "%";
+    // Off (paused / idle / stopped): hide controls, show the power button.
+    const on = (s.state === "playing");
+    sClass("sonosCard", "off", !on);
+    if (!on) {
+      sTxt("track", T.radioOff || "Off");
+      sTxt("artist", "");
+      return;
+    }
+    // Some stations feed a junk title (a filename). Match the stable stream URL
+    // (media_content_id) and show a fixed name — media_channel can flicker to null.
+    const cid = a.media_content_id || "";
+    const map = CONFIG.STATION_TITLE || {};
+    let fixed = null;
+    for (const k in map) { if (cid.includes(k)) { fixed = map[k]; break; } }
+    if (fixed) {
+      sTxt("track", fixed);
+      sTxt("artist", "");
+    } else {
+      sTxt("track", a.media_title || a.media_channel || "—");
+      sTxt("artist", a.media_artist || a.media_album_name || "");
+    }
+    const audible = !a.is_volume_muted && (a.volume_level || 0) > 0;
+    sHtml("playIcon", audible ? ICON_PAUSE : ICON_PLAY);
+    // Muted reads as 0% / empty bar (mute is separate from volume_level).
+    const vol = a.is_volume_muted ? 0 : ((a.volume_level != null) ? Math.round(a.volume_level * 100) : 0);
+    sStyle("volFill", "width", vol + "%");
+    sTxt("volPct", vol + "%");
   } catch (e) {
-    $("track").innerHTML = `<span class="muted">${T.sonosUnavailable}</span>`;
+    sClass("sonosCard", "off", true);
+    sHtml("track", `<span class="muted">${T.sonosUnavailable}</span>`);
+    sTxt("artist", "");
   }
 }
 
@@ -460,26 +553,66 @@ const E = CONFIG.SONOS_ENTITY;
 $("btnPrev").onclick    = () => callService("script", CONFIG.SCRIPT_SKIP, { step: -1 });
 $("btnNext").onclick    = () => callService("script", CONFIG.SCRIPT_SKIP, { step: 1 });
 $("btnPlay").onclick     = () => callService("script", CONFIG.SCRIPT_PLAY, {});
+$("btnPower").onclick    = () => callService("script", CONFIG.SCRIPT_PLAY, {});
 $("btnVolUp").onclick   = () => callService("media_player", "volume_up",   { entity_id: E });
 $("btnVolDown").onclick = () => callService("media_player", "volume_down", { entity_id: E });
 
-/* ================== Init ================== */
-function refreshData() { loadBattery(); loadWifi(); loadTemp(); loadWeather(); loadDinner(); loadFamily(); loadSonos(); }
+/* ================== Init / refresh sections ================== */
+// Minute: clock + device telemetry (okular reads, no network).
+function refreshMinute() { tick(); loadBattery(); loadWifi(); loadTemp(); }
+// Slow data (changes infrequently): the periodic tier and the on-demand screen tap.
+function refreshSlow() { loadWeather(); loadFamily(); loadDinner(); loadTrash(); }
+// Everything — first paint.
+function refreshAll() { refreshMinute(); loadSonos(); refreshSlow(); }
+
+// Run fn aligned to the wall-clock minute, then every 60s (keeps the clock exact).
+function everyMinute(fn) {
+  // Re-aligns to the next minute boundary each tick (setInterval would drift).
+  const tick = () => {
+    fn();
+    const n = new Date();
+    setTimeout(tick, 60000 - (n.getSeconds() * 1000 + n.getMilliseconds()));
+  };
+  const n = new Date();
+  setTimeout(tick, 60000 - (n.getSeconds() * 1000 + n.getMilliseconds()));
+}
+// Run fn once a day at local "HH:MM", then daily.
+function daily(hm, fn) {
+  const [h, m] = (hm || "06:40").split(":").map(Number);
+  const arm = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    setTimeout(() => { fn(); arm(); }, next - now);
+  };
+  arm();
+}
 
 async function init() {
   if (!window.JOAN_CONFIG) { document.body.innerHTML = "<p style='padding:40px;font-size:28px'>Missing config.js</p>"; return; }
   try { T = await (await fetch(`lang/${CONFIG.LANGUAGE || "en"}.json`)).json(); }
   catch (e) { T = { dateLocale: "en-GB", labels: {}, weather: {} }; }
 
-  $("barMsg").textContent = CONFIG.BAR_MSG || "";
-  $("lblRadio").textContent = (T.labels && T.labels.radio) || "Radio";
-  $("lblCalendar").textContent = (T.labels && T.labels.calendar) || "Calendar";
-  $("lblDinner").textContent = (T.labels && T.labels.dinner) || "Dinner";
-  $("familyList").innerHTML = `<div class="muted">${T.loading || "Loading"}…</div>`;
-  $("dinnerList").innerHTML = `<div class="muted">${T.loading || "Loading"}…</div>`;
+  sTxt("barMsg", CONFIG.BAR_MSG || "");
+  sTxt("lblRadio", (T.labels && T.labels.radio) || "Radio");
+  sTxt("lblCalendar", (T.labels && T.labels.calendar) || "Calendar");
+  sTxt("lblDinner", (T.labels && T.labels.dinner) || "Dinner");
+  sHtml("familyList", `<div class="muted">${T.loading || "Loading"}…</div>`);
+  sHtml("dinnerList", `<div class="muted">${T.loading || "Loading"}…</div>`);
 
-  tick(); setInterval(tick, 10000);
-  refreshData(); setInterval(refreshData, (CONFIG.REFRESH_SEC || 20) * 1000);
+  refreshAll();                                                            // first paint
+  everyMinute(refreshMinute);                                              // clock + battery + signal + temp
+  setInterval(loadSonos, (CONFIG.RADIO_REFRESH_SEC || 30) * 1000);         // radio
+  setInterval(() => { loadWeather(); loadFamily(); },
+              (CONFIG.PERIODIC_REFRESH_MIN || 30) * 60000);                // weather + family calendar
+  daily(CONFIG.DAILY_REFRESH_AT || "06:40", () => { loadDinner(); loadTrash(); }); // morning
+
+  // Tap the screen to pull in the slow data (weather, calendars, dinner, bin) on demand;
+  // touch does nothing by default. Leading-edge throttle: the first tap refreshes now, taps
+  // within 60s are ignored (which also absorbs the touchend+click one physical tap fires).
+  let lastTap = 0;
+  const onTap = () => { const t = Date.now(); if (t - lastTap > 60000) { lastTap = t; refreshSlow(); } };
+  ["click", "touchend"].forEach(ev => document.addEventListener(ev, onTap, true));
 }
 init();
 </script>

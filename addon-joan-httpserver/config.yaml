@@ -1,10 +1,14 @@
 name: Joan Dashboard Server
-version: "1.0.1"
+version: "2026.06.22"
 slug: joan_dashboard
 description: LAN-only static web server + token-injecting API proxy for the Joan e-ink dashboard
 url: https://github.com/albertbm/joanboard/tree/main/addon-joan-httpserver
 arch:
+  - aarch64
   - amd64
+  - armhf
+  - armv7
+  - i386
 startup: services
 boot: auto
 init: false

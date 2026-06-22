@@ -1,4 +1,4 @@
-FROM nginx:alpine
+FROM nginx:1.27-alpine
 RUN apk add --no-cache jq
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY run.sh /run.sh

@@ -1,21 +1,18 @@
 # joanboard
 
-A self-contained e-ink dashboard for a Visionect Joan tablet, driven by Home Assistant.
-It shows a clock, weather with a multi-day forecast, a merged family calendar, the dinner
-plan, and radio controls. Landscape, pure black on white for e-ink.
+An e-ink dashboard for the Visionect Joan, fed by Home Assistant. Clock, weather and a multi-day
+forecast, a merged family calendar, the dinner plan, the next bin day, and radio controls.
+Landscape, black on white.
 
-It is just a plain HTML page you fully control, so you can lay out and render whatever you want
-on the device, rather than being limited to a prebuilt dashboard system like AppDaemon's
-HADashboard. Controlling the page also lets it poll the device's native telemetry (battery, WiFi
-signal, inside temperature) directly from the Visionect renderer, which a prebuilt widget
-dashboard cannot reach.
+It's a plain HTML page, which is the point: you lay it out however you want, and it reads the
+Joan's own battery, WiFi and temperature straight from the renderer. HADashboard can't do either.
 
 ![joanboard dashboard](docs/screenshot.png)
 
 ## How it works
 
 The Joan cannot talk to Home Assistant directly. The Visionect Software Suite renders a URL in a
-headless browser and pushes the image to the screen. This project is that URL: a static page plus
+headless browser and pushes the image to the screen. joanboard is that URL: a static page plus
 a small add-on. The add-on serves the page on the LAN and proxies the Home Assistant API, adding
 your token on the server side, so the token is never sent to the browser.
 
@@ -57,8 +54,8 @@ See Credits for links.
 - `lang/en.json`, `lang/is.json` - UI translations. Add more languages by dropping in another
   file and setting `LANGUAGE` in your config.
 - `addon-joan-httpserver/` - a small nginx Home Assistant add-on that serves these files on a
-  LAN-only port and proxies the HA API with your token injected server-side, so the token is
-  never served to the browser. The token and an IP allowlist are set in its Configuration tab.
+  LAN-only port and proxies the HA API with the token injected server-side. The token and an IP
+  allowlist are set in its Configuration tab.
 - `joan-automations.yaml` - optional Home Assistant automations: switch the Day/Night view
   around the device's native sleep window, plus a low-battery reminder. The Visionect Software
   Suite handles the actual sleep/wake ("Working hours"). Fill in the placeholders before use.
@@ -120,6 +117,16 @@ Copy `config.example.js` to `config.js`, then edit:
 - `SCRIPT_PLAY`, `SCRIPT_SKIP`: object IDs of Home Assistant scripts (without the `script.`
   prefix). The center button calls `SCRIPT_PLAY`; previous and next call `SCRIPT_SKIP` with
   `step` of -1 or +1. Point them at plain `media_player` services instead if you prefer.
+- `TRASH_ENTITY` (optional): a sensor whose state is the next bin-collection date (`YYYY-MM-DD`),
+  shown under the clock. `TRASH_LABEL_ATTR` names an attribute holding the bin type, and
+  `TRASH_LABEL_MAP` can rename bin terms (for example `{ "Mixed": "General" }`). Leave
+  `TRASH_ENTITY` empty to hide the line.
+- `STATION_TITLE` (optional): some radio streams report a junk "now playing" title (a filename).
+  Map a stable substring of the stream URL (`media_content_id`) to a fixed name, for example
+  `{ "somestreamid": "Some FM" }`.
+- Refresh cadence: `RADIO_REFRESH_SEC` (default 30), `PERIODIC_REFRESH_MIN` for weather and the
+  family calendar (default 30), and `DAILY_REFRESH_AT` for dinner and bin (default `"06:40"`).
+  Clock, battery and signal refresh once a minute.
 
 Edit `config.js` directly in `share/joan` with the File editor or VS Code add-on, then reload
 the page on the tablet. `config.js` is gitignored so your token never enters version control.
@@ -153,9 +160,13 @@ tokens cannot be scoped). Never forward or tunnel port 8099 to the internet.
 
 ## Controls
 
-- Play/pause button: mute and unmute (wired to a Home Assistant script).
+- Play/pause button: mute and unmute (wired to a Home Assistant script). A muted player shows an
+  empty volume bar (0%).
 - Previous/next: change radio station (wired to a Home Assistant script).
 - Minus/plus: volume.
+- When the player is not playing (paused, idle, off) the controls are hidden and a power button
+  appears in the top-right of the radio card; pressing it runs `SCRIPT_PLAY` to start it.
+- Tap anywhere on the screen to refresh all data on demand.
 
 The script object IDs are set in `config.js` via `SCRIPT_PLAY` and `SCRIPT_SKIP`.
 

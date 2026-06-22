@@ -15,9 +15,21 @@ window.JOAN_CONFIG = {
 
   // Entities (battery, WiFi and inside temperature come natively from the device)
   SONOS_ENTITY: "media_player.kitchen_speaker",
+  // Stations whose "now playing" title is junk (e.g. a filename): show a fixed
+  // name instead. Keyed by a stable substring of media_content_id (the stream
+  // URL), e.g. { "somestreamid": "Some FM" }.
+  STATION_TITLE: {},
   WEATHER_ENTITY: "weather.home",
   DINNER_CALENDAR: "calendar.dinner",
   DINNER_DAYS: 3,
+
+  // Bin collection (optional): a sensor whose state is the next collection date
+  // (YYYY-MM-DD). TRASH_LABEL_ATTR names an attribute holding the bin type, or "".
+  // Leave TRASH_ENTITY "" to hide the line.
+  TRASH_ENTITY: "",
+  TRASH_LABEL_ATTR: "",
+  // Optional: rename bin terms from the sensor, e.g. { "Mixed": "General" }.
+  TRASH_LABEL_MAP: {},
 
   // Family calendars: [entity, display name]
   FAMILY: [
@@ -36,5 +48,8 @@ window.JOAN_CONFIG = {
 
   // Misc
   VOLUME_STEP: 0.05,
-  REFRESH_SEC: 20
+  // Refresh cadence per section (clock + battery + signal are fixed at 1 min):
+  RADIO_REFRESH_SEC: 30,        // radio / now-playing
+  PERIODIC_REFRESH_MIN: 30,     // weather + family calendar
+  DAILY_REFRESH_AT: "06:40"     // dinner + bin (relative dates) — once each morning
 };
